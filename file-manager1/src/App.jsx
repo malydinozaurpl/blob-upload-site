@@ -19,7 +19,6 @@ export default function FileManager() {
     const all = instance.getAllAccounts();
     if (all.length > 0 && !instance.getActiveAccount()) {
       instance.setActiveAccount(all[0]);
-      // console.log("[MSAL] Bootstrap setActiveAccount:", all[0]?.username);
     }
   }, [instance]);
 
@@ -28,7 +27,6 @@ export default function FileManager() {
     const cbId = instance.addEventCallback((event) => {
       if (event.eventType === EventType.LOGIN_SUCCESS && event.payload?.account) {
         instance.setActiveAccount(event.payload.account);
-        // console.log("[MSAL] LOGIN_SUCCESS setActiveAccount:", event.payload.account?.username);
       }
     });
     return () => { if (cbId) instance.removeEventCallback(cbId); };
@@ -89,7 +87,7 @@ export default function FileManager() {
 
   const deleteFile = async (filename) => {
     if (!dstContainer) return alert("Podaj nazwę folderu!");
-    await authFetch(`${API}/upload/delete/${dstContainer}/${filename}`, {
+    await authFetch(`${API}/delete/${dstContainer}/${filename}`, {
       method: "DELETE",
     });
     fetchFiles();
@@ -113,6 +111,31 @@ export default function FileManager() {
     URL.revokeObjectURL(url);
   };
 
+  // NEW: tworzenie folderu/kontenera
+  const createContainer = async () => {
+    if (!dstContainer) return alert("Podaj nazwę folderu!");
+    try {
+      const res = await authFetch(`${API}/container/create/${encodeURIComponent(dstContainer)}`, {
+        method: "POST",
+      });
+
+      // Sukces (często 200 albo 201)
+      if (res.ok) {
+        setAuthStatus(`Folder "${dstContainer}" został utworzony ✅`);
+        alert(`Folder "${dstContainer}" został utworzony.`);
+        // Opcjonalnie: odśwież listę (jeśli API tak działa)
+        // fetchFiles();
+      } else {
+        const text = await res.text().catch(() => "");
+        setAuthStatus(`Folder nie został utworzony ❌ (HTTP ${res.status})`);
+        alert(`Folder nie został utworzony.\nKod: ${res.status}\n${text || res.statusText}`);
+      }
+    } catch (err) {
+      setAuthStatus("Folder nie został utworzony ❌ (błąd połączenia)");
+      alert("Folder nie został utworzony. Sprawdź połączenie/API.");
+    }
+  };
+
   const activeUsername = instance.getActiveAccount()?.username;
 
   // 3) Gdy MSAL jest w trakcie interakcji (redirect/iframe), wstrzymaj UI
@@ -133,9 +156,7 @@ export default function FileManager() {
                 Zaloguj przez Microsoft
               </button>
               <div style={styles.authStatus}><b>Status:</b> {authStatus}</div>
-              <div style={styles.tip}>
-                
-              </div>
+              <div style={styles.tip}></div>
             </>
           ) : (
             <>
@@ -154,6 +175,11 @@ export default function FileManager() {
           onChange={(e) => setDstContainer(e.target.value)}
           style={styles.input}
         />
+
+        {/* NEW: przycisk Stwórz folder */}
+        <button onClick={createContainer} style={styles.buttonBlue}>
+          Stwórz folder
+        </button>
 
         <input
           type="file"

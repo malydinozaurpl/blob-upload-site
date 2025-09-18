@@ -9,6 +9,7 @@ load_dotenv()
 tenantUrl = getenv("tenantUrl")
 iss = getenv("issuer")
 aud = getenv("audience")
+token = getenv("token")
 def tokenValidation( entraToken: str ):
 
     entraJWT = PyJWKClient(tenantUrl)
@@ -16,13 +17,14 @@ def tokenValidation( entraToken: str ):
     entraDecryptData = entraJWT.get_signing_key_from_jwt(entraToken)
 
     try:
-        decode(
+        tokenDecoded = decode(
             entraToken,
             entraDecryptData.key,
             entraDecryptData.algorithm_name,
-            issuer = iss,
             audience = aud
         )
+        return tokenDecoded["upn"]
     except PyJWTError:
         # to-do: logging errors
         return HTTPException(status_code="401",detail="Invalid Token")
+

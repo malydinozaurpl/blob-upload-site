@@ -1,21 +1,21 @@
 from blob.blob import storage
-from blob.routers.auth import authRouter
-from fastapi import FastAPI, UploadFile, File, APIRouter, Depends
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from mimetypes import guess_type
 from fastapi.security import HTTPAuthorizationCredentials,HTTPBearer
-from typing import Annotated
 from blob.routers.jwt1 import tokenValidation
-
+from blob.database.database import postgres, checkList, checkWrite
+from typing import Annotated
+#username = "test1"
+saccount = "saccount1"
 security = HTTPBearer()
 
 def authUser( credentials: HTTPAuthorizationCredentials = Depends(security) ):
-    tokenValidation(credentials.credentials)
-    return None
-
-app = FastAPI(dependencies = [Depends(authUser)] )
-app.include_router(authRouter)
+    upn = tokenValidation(credentials.credentials)
+    return upn
+#dependencies = [Depends(authUser)] 
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,41 +25,107 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/upload/{dstContainer}")
-async def uploadBlob( dstContainer: str ,entry: UploadFile = File(...)):
-    storageConnection = storage()
-    dataToUpload = await entry.read()
-    storageConnection.uploudBlockBlob( dstContainer, dataToUpload, entry.filename)
-    storageConnection.close()
-    return {"status" : "file uploaded" }
+# ---------------Kontenery-------------------------
+@app.post("/container/create/{containerName}")
+async def newContainer( containerName: str, username: Annotated[str, Depends(authUser)]):
+    async with postgres() as db:
+        containerExist = await db.getContainer(containerName)
+        uId = await db.getUser(username)
+        if containerExist:
+            raise HTTPException(status_code=409, detail="Kontener juz istnieje")
+        if not uId:
+            uId = await db.addUser(username)
+        cId = await db.addContainer( containerName, saccount)
+        await db.addPermissions( cId, uId, "owner")
+        storageConnection = storage()
+        storageConnection.createContainer(containerName)
+        return f'Container {containerName} Created'
 
-@app.delete("/upload/delete/{dstContainer}/{filename}")
-async def deleteBlob( dstContainer: str , filename: str ):
-    storageConnection = storage()
-    storageConnection.deleteBlockBlob( dstContainer, filename )
-    storageConnection.close()
-    return {"status": "Entry successfully deleted"}
+@app.get("/containers")
+async def listContainers(username: Annotated[str, Depends(authUser)]):
+    async with postgres() as db:
+        uId = await db.getUser(username)
+        containers = await db.getContainers(uId)
+        return containers
 
-
+@app.delete("/delete/{containerName}")
+async def rmContainer(containerName: str, username: Annotated[str, Depends(authUser)]):
+    async with postgres() as db:
+        containerExist = await db.getContainer(containerName)
+        aclCheck = await db.getACL(containerName, username)
+        if not checkWrite(aclCheck):
+            raise HTTPException(status_code=403, detail="Brak uprawnień")
+        if not containerExist:
+            raise HTTPException(status_code=404, detail="Kontener nie istnieje")
+        await db.rmContainer(containerName)
+        storageConnection = storage()
+        storageConnection.deleteContainer(containerName)
+ 
+# ------------------Pliki------------------------------
 @app.get("/listblobs/{dstContainer}")
-async def listBlobs( dstContainer: str ):
-    storageConnection = storage()
-    blobs = storageConnection.listBlobs( dstContainer )
-    storageConnection.close()
-    blobs_names = []
-    for i in blobs:
-       blobs_names.append(i.name)
-    return blobs_names
+async def listBlobs( dstContainer: str, username: Annotated[str, Depends(authUser)]):
+    async with postgres() as db:
+        acl = await db.getACL(dstContainer, username)
+        containerExist = await db.getContainer(dstContainer)
+        if not containerExist:
+            raise HTTPException(status_code=404, detail="Kontener nie istnieje")
+        if not checkList(acl):
+            raise HTTPException(status_code=403, detail="Brak uprawnień")
+        storageConnection = storage()
+        blobs = storageConnection.listBlobs(dstContainer)
+        storageConnection.close()
+        blobsNames = []
+        for i in blobs:
+            blobsNames.append(i.name)
+        return blobsNames
+
+
 
 @app.get("/download/{dstContainer}/{filename}")
-async def downloadBlob( dstContainer: str, filename:str ):
-    storageConnection = storage()
-    blob = storageConnection.downloadBlob( dstContainer, filename )
-    # wypakowanie tuple, bo mimetype zwraca tuple (value1, value2)
-    mimeType, encoding = guess_type(filename)
-    if mimeType is None:
-        mimeType = "application/octet-stream"
-    return StreamingResponse(
-        blob.chunks(), media_type=mimeType
-        )
-    #return StreamingResponse(blob.chunks(), media_type="application/octet-stream")
+async def downloadBlob( dstContainer: str, filename:str, username: Annotated[str, Depends(authUser)]):
+    async with postgres() as db:
+        containerExist = await db.getContainer(dstContainer) 
+        acl = await db.getACL(dstContainer,username)
+        if not containerExist:
+            raise HTTPException(status_code=404, detail="Kontener nie istnieje")
+        if not checkList(acl):
+            raise HTTPException(status_code=403, detail="Brak uprawnień")
+        storageConnection = storage()
+        blob = storageConnection.downloadBlob( dstContainer, filename )
+        # wypakowanie tuple, bo mimetype zwraca tuple (value1, value2)
+        mimeType, encoding = guess_type(filename)
+        if mimeType is None:
+            mimeType = "application/octet-stream"
+        return StreamingResponse(
+            blob.chunks(), media_type=mimeType
+            )
+
+@app.post("/upload/{dstContainer}")
+async def uploadBlob( dstContainer: str ,username: Annotated[str, Depends(authUser)], entry: UploadFile = File(...)):
+    async with postgres() as db:
+        containerExist = await db.getContainer(dstContainer)
+        acl = await db.getACL(dstContainer,username)
+        if not containerExist:
+            raise HTTPException(status_code=404, detail="Kontener nie istnieje")
+        if not checkWrite(acl):
+            raise HTTPException(status_code=403, detail="Brak uprawnień")
+        storageConnection = storage()
+        dataToUpload = await entry.read()
+        storageConnection.uploudBlockBlob( dstContainer, dataToUpload, entry.filename)
+        storageConnection.close()
+        return {"status" : "file uploaded" }
+
+@app.delete("/delete/{dstContainer}/{filename}")
+async def deleteBlob( dstContainer: str , filename: str, username: Annotated[str, Depends(authUser)]):
+    async with postgres() as db:
+        containerExist = await db.getContainer(dstContainer)
+        acl = await db.getACL(dstContainer,username)
+        if not containerExist:
+            raise HTTPException(status_code=404, detail="Kontener nie istnieje")
+        if not checkWrite(acl):
+            raise HTTPException(status_code=403, detail="Brak uprawnień")
+        storageConnection = storage()
+        storageConnection.deleteBlockBlob( dstContainer, filename )
+        storageConnection.close()
+        return {"status": "Entry successfully deleted"}
+

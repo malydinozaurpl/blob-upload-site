@@ -1,8 +1,11 @@
 name: Backend Docker Build and Push
 on:
   push:
-   paths:
-   -  'src/backend/**' 
+    branches: 
+    - main
+  paths:
+  - 'src/backend/**'
+  - 'src/frontend/**' 
 
 env:
   IMAGE_NAME_BACKEND: ${{ github.repository_owner }}/filemanager-backend
@@ -29,11 +32,22 @@ jobs:
       id: tag
       run: echo "TAG=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
-    - name: Build and push image
+    - name: Build and push backend image
       uses: docker/build-push-action@v6
+      if: startsWith(github.ref.name,'backend')
       with:
         push: true
         context: ./src/backend
         tags: |
-            ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.tag.outputs.TAG }}
+            ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.tag.outputs.tag }}
             ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:latest
+   
+    - name: Build and push frontend image
+      uses: docker/build-push-action@v6
+      if: startsWith(github.ref.name, 'frontend')
+      with:
+      push: true
+      context: ./src/frontend
+      tags: |
+        ghcr.io/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.tag.outputs.tag }}
+        ghcr.io/${{ env.IMAGE_NAME_FRONTEND }}:$latest

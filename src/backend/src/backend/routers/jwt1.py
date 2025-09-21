@@ -1,4 +1,5 @@
 """Validation of Entra ID JWT token"""
+
 from jwt import decode, PyJWKClient, PyJWTError
 from dotenv import load_dotenv
 from os import getenv
@@ -9,11 +10,11 @@ load_dotenv()
 tenantUrl = getenv("tenantUrl")
 iss = getenv("issuer")
 aud = getenv("audience")
-token = getenv("token")
-def tokenValidation( entraToken: str ):
 
+
+def tokenValidation(entraToken: str):
     entraJWT = PyJWKClient(tenantUrl)
-    
+
     entraDecryptData = entraJWT.get_signing_key_from_jwt(entraToken)
 
     try:
@@ -21,10 +22,9 @@ def tokenValidation( entraToken: str ):
             entraToken,
             entraDecryptData.key,
             entraDecryptData.algorithm_name,
-            audience = aud
+            audience=aud,
         )
         return tokenDecoded["upn"]
     except PyJWTError:
         # to-do: logging errors
-        return HTTPException(status_code="401",detail="Invalid Token")
-
+        return HTTPException(status_code="401", detail="Invalid Token")

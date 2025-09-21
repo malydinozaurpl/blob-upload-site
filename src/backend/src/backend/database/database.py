@@ -1,22 +1,23 @@
 import asyncpg
-from pydantic import BaseModel
 from dotenv import load_dotenv
 from os import getenv
 from fastapi import HTTPException
+
 load_dotenv()
 dbUrl = getenv("DB")
 
 
-class postgres():
+class postgres:
     """SQL command execution"""
 
     async def __aenter__(self):
-        self.pool = await asyncpg.create_pool( dbUrl )
+        self.pool = await asyncpg.create_pool(dbUrl)
         return self
+
     async def __aexit__(self, exc_type, exc_value, traceback):
         await self.pool.close()
 
- # -------------------USER OPERATIONS-------------------------   
+    # -------------------USER OPERATIONS-------------------------
     async def addUser(self, username: str):
         async with self.pool.acquire() as dbConnection:
             sql = """
@@ -28,14 +29,14 @@ class postgres():
             except Exception:
                 return "User has not been added"
             return uId
-        
+
     async def getUser(self, username: str) -> int | None:
         async with self.pool.acquire() as conn:
             data = await conn.fetchval(
                 "SELECT id FROM users WHERE username = $1", username
             )
-            return data # bo fetchval zwraca int albo None
-        
+            return data  # bo fetchval zwraca int albo None
+
     async def rmUser(self, username: str):
         async with self.pool.acquire() as dbConnection:
             sql = """
@@ -48,9 +49,9 @@ class postgres():
                 return "User not deleted"
         return "User deleted"
 
-#------------------------------------------------------------------
-#-----------------Container Operations-----------------------------
-#------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # -----------------Container Operations-----------------------------
+    # ------------------------------------------------------------------
     async def addContainer(self, containerName: str, sAccountName: str):
         """Add new container and its permissions"""
         async with self.pool.acquire() as dbConnection:
@@ -59,11 +60,15 @@ class postgres():
             RETURNING ID
             """
             try:
-                containerId = await dbConnection.fetchval( sql, containerName, sAccountName )
+                containerId = await dbConnection.fetchval(
+                    sql, containerName, sAccountName
+                )
             except Exception:
-                raise HTTPException(status_code=500, detail="Container has not been created")  
+                raise HTTPException(
+                    status_code=500, detail="Container has not been created"
+                )
             return containerId
-        
+
     async def getContainer(self, containerName: str):
         async with self.pool.acquire() as dbConnection:
             sql = """
@@ -72,6 +77,7 @@ class postgres():
             """
             result = await dbConnection.fetchval(sql, containerName)
             return result
+
     async def getContainers(self, uId: int):
         async with self.pool.acquire() as dbConnection:
             sql = """
@@ -80,7 +86,7 @@ class postgres():
             where user_id = $1
             """
             data = await dbConnection.fetch(sql, uId)
-            data = [ r["name"]for r in data ]
+            data = [r["name"] for r in data]
             return data
 
     async def rmContainer(self, containerName: str):
@@ -91,14 +97,14 @@ class postgres():
             WHERE NAME = $1
             """
             try:
-                await dbConnection.execute( sql, containerName )
+                await dbConnection.execute(sql, containerName)
             except Exception:
                 return "Container not deleted"
-    
-#----------------------------------------------------------------------------
-#-------------------------------ACL------------------------------------------        
-#----------------------------------------------------------------------------
-    async def getACL( self, containerName: str, username: str ):
+
+    # ----------------------------------------------------------------------------
+    # -------------------------------ACL------------------------------------------
+    # ----------------------------------------------------------------------------
+    async def getACL(self, containerName: str, username: str):
         async with self.pool.acquire() as dbConnection:
             sql = """
                 Select ARRAY(
@@ -109,7 +115,7 @@ class postgres():
                 """
             data = await dbConnection.fetchval(sql, username, containerName)
             return data or []
-        
+
     async def addPermissions(self, cId: str, uId: str, acl: str | None):
         """Add new permisions to a user"""
         if acl is None:
@@ -120,12 +126,11 @@ class postgres():
             VALUES ($1,$2,$3)
             """
             try:
-                await dbConnection.execute( sql, cId, uId, acl )
+                await dbConnection.execute(sql, cId, uId, acl)
             except Exception:
-                raise HTTPException(status_code=500, detail="ACL has not been created") 
- 
+                raise HTTPException(status_code=500, detail="ACL has not been created")
 
-    async def rmPermissions( self, username: str , containerName: str ):
+    async def rmPermissions(self, username: str, containerName: str):
         """Remove container permissions"""
         async with self.pool.acquire() as dbConnection:
             sql = """
@@ -135,18 +140,19 @@ class postgres():
             userId = await self.getUser(username)
             containerId = await self.getContainer(containerName)
             try:
-                await dbConnection.execute( sql, userId, containerId)
+                await dbConnection.execute(sql, userId, containerId)
             except Exception:
                 return "Permissions not removed"
         return "Permissions removed"
 
 
-def checkList( roles: set[str] ):
+def checkList(roles: set[str]):
     if "read" in roles or "write" in roles or "owner" in roles:
         return True
     return False
 
-def checkWrite( roles: set[str] ):
+
+def checkWrite(roles: set[str]):
     if "write" in roles or "owner" in roles:
         return True
     return False

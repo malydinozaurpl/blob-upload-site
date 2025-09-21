@@ -19,6 +19,7 @@ jobs:
       with:
         username: ${{ github.actor }} # means owner of the repo
         password: ${{ secrets.GITHUB_TOKEN }} # created at runtime, can be used in place of password
+        registry: ghcr.io
 
     - name: Get tag
       id: tag

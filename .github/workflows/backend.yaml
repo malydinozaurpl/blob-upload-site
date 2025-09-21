@@ -7,6 +7,10 @@ on:
 env:
   IMAGE_NAME_BACKEND: ${{ github.repository_owner }}/filemanager-backend
 
+permissions: # this is needed for pushing the image to ghcr.io
+  contents: read
+  packages: write
+  
 jobs:
   Build-Docker-Image:
     runs-on: ubuntu-latest
@@ -15,7 +19,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Docker Login to ghcr.io
-      uses: docker/login-action@v3
+      uses: docker/login-actions@v3
       with:
         username: ${{ github.actor }} # means owner of the repo
         password: ${{ secrets.GITHUB_TOKEN }} # created at runtime, can be used in place of password
@@ -31,5 +35,5 @@ jobs:
         push: true
         context: ./src/backend
         tags: |
-          ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.output.filter.TAG }}
-          ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:latest
+            ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.tag.outputs.TAG }}
+            ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:latest

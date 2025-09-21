@@ -1,0 +1,34 @@
+name: Backend Docker Build and Push
+on:
+  push:
+   paths:
+   -  'src/backend/**' 
+
+env:
+  IMAGE_NAME_BACKEND: ${{ github.repository_owner }}/filemanager-backend
+
+jobs:
+  Build-Docker-Image:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Docker Login to ghcr.io
+      uses: docker/login-actions@v3
+      with:
+        username: ${{ github.actor }} # means owner of the repo
+        password: ${{ secrets.GITHUB_TOKEN }} # created at runtime, can be used in place of password
+
+    - name: Get tag
+      id: tag
+      run: echo "TAG=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Build and push image
+      uses: docker/build-push-action@v6
+      with:
+        push: true
+        context: ./src/backend
+        tags: |
+          ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.output.filter.TAG }}
+          ghcr.io/${{ env.IMAGE_NAME_BACKEND }}:latest
